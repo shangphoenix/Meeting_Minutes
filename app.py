@@ -62,6 +62,10 @@ from starlette.status import HTTP_422_UNPROCESSABLE_ENTITY
 from pydantic import BaseModel
 import uvicorn
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 
 # =========================================================
 # 输出会话目录（按时间戳）
@@ -130,9 +134,12 @@ OLLAMA_DEEPSEEK_MODEL = os.getenv(
 )
 
 # ---- Cloud DeepSeek ----
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "sk-f01e298e09304c28b72045d4de42100c").strip()
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "").strip()
 DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com").rstrip("/")
 DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat").strip()
+
+if not DEEPSEEK_API_KEY:
+	raise RuntimeError("DEEPSEEK_API_KEY is not set")
 
 
 def _deepseek_summarize_ollama(raw_text: str) -> str:
