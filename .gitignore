@@ -1,0 +1,8 @@
+/Archieved/
+
+/.idea/
+.venv
+__pycache__/
+*.pyc
+*.pyo
+*.pyd

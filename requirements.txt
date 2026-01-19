@@ -1,0 +1,24 @@
+# Web 框架
+fastapi>=0.104.1
+uvicorn[standard]>=0.24.0
+starlette>=0.27.0
+
+# 数据验证
+pydantic>=2.5.0
+
+# ASR 和深度学习
+funasr>=0.9.7
+torch>=2.1.0
+torchaudio>=2.1.0
+
+# 数值计算和数据处理
+numpy>=1.24.0
+
+# 音频处理
+ffmpeg-python>=0.2.0
+
+# 类型提示支持
+typing-extensions>=4.8.0
+
+# 注意：PyTorch 需要根据 CUDA 版本单独安装，建议使用镜像源：
+# pip3 install torch torchvision torchaudio --index-url https://mirrors.nju.edu.cn/pytorch/whl/cu128/
