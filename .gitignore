@@ -10,3 +10,4 @@ __pycache__/
 test.html
 video_processor/SVID_20260115_150848_1.mp4
 .env
+video_processor/summary.txt
