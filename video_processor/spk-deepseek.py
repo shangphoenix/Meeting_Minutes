@@ -21,6 +21,7 @@ import requests
 
 AUDIO_PATH = "SVID_20260115_150848_1.mp4"
 OUTPUT_JSON = "output.json"
+SUMMARY_TXT = "summary.txt"
 
 DEVICE = "cuda"
 NGPU = 1
@@ -29,7 +30,7 @@ NCPU = 4
 MERGE_CONTINUOUS_SPK = True
 MERGE_GAP_MS = 300  # 关键参数：300ms
 
-USE_LOCAL_DEEPSEEK = False  # <<< True=本地；False=官方
+USE_LOCAL_DEEPSEEK = False  # True=本地；False=官方
 
 # ---- 本地部署 ----
 LOCAL_DEEPSEEK_URL = "http://192.168.10.90:11434/api/generate"
@@ -172,7 +173,7 @@ def transfer_units_to_txt(units):
 # =========================================================
 # 本地调用（Ollama/私有部署）：/api/generate
 # =========================================================
-def deepseek_local(prompt: str) -> str:
+def _deepseek_local(prompt: str) -> str:
 	payload = {
 		"model" : LOCAL_DEEPSEEK_MODEL,
 		"prompt": prompt,
@@ -194,7 +195,7 @@ def deepseek_local(prompt: str) -> str:
 # =========================================================
 # 官方调用：/v1/chat/completions
 # =========================================================
-def deepseek_official(prompt: str) -> str:
+def _deepseek_official(prompt: str) -> str:
 	if not OFFICIAL_DEEPSEEK_API_KEY:
 		raise RuntimeError(
 			"未检测到官方 API Key。\n"
@@ -246,10 +247,16 @@ def deepseek_official(prompt: str) -> str:
 # =========================================================
 # 统一入口：deepseek_optimize
 # =========================================================
-def deepseek_optimize(prompt: str) -> str:
+def deepseek_optimize(prompt: str, path=SUMMARY_TXT) -> str:
+	summary = ""
 	if USE_LOCAL_DEEPSEEK:
-		return deepseek_local(prompt)
-	return deepseek_official(prompt)
+		summary = _deepseek_local(prompt)
+	else:
+		summary = _deepseek_official(prompt)
+	with open(path, "w", encoding="utf-8") as f:
+		f.write(summary)
+	print(f"\n✅ SUMMARY 已保存：{path}")
+	return summary
 
 
 # =========================================================
