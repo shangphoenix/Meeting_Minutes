@@ -45,7 +45,7 @@ import json
 import wave
 import time
 import asyncio
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from urllib.parse import parse_qs
 import argparse
 
@@ -62,6 +62,7 @@ from starlette.status import HTTP_422_UNPROCESSABLE_ENTITY
 from pydantic import BaseModel
 import uvicorn
 
+# 加载本地环境变量（主要是DEEPSEEK_API_KEY）
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -138,7 +139,7 @@ DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "").strip()
 DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com").rstrip("/")
 DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat").strip()
 
-if not DEEPSEEK_API_KEY:
+if not DEEPSEEK_API_KEY or DEEPSEEK_API_KEY == "sk-xxx":
 	raise RuntimeError("DEEPSEEK_API_KEY is not set")
 
 
@@ -374,10 +375,49 @@ def build_transcript_for_summary(result_obj: Dict[str, Any]) -> str:
 # =========================================================
 # FastAPI / WebSocket
 # =========================================================
+# code 语义定义：
+# code = 0  【实时识别分段结果 / partial segment】
+#   - 触发时机：
+#       每一次 VAD 结束 + ASR 产出文本
+#   - info:
+#       JSON 字符串，包含时间与耗时信息
+#   - data:
+#       该分段对应的识别文本
+# -------------------------
+# code = 1  【最终字幕识别结果 / final result】
+#   - 触发时机：
+#       WebSocket 即将结束前，整段音频离线处理完成
+#   - info:
+#       固定字符串："final"
+#   - data:
+#       final_obj 的 JSON 字符串（ensure_ascii=False）
+#       结构示例：
+#       {
+#         "audio_full": {...},
+#         "segments": [
+#           {
+#             "spk": <speaker_id>,
+#             "text": "...",
+#             "start_ms": ...,
+#             "end_ms": ...
+#           }
+#         ]
+#       }
+#
+# -------------------------
+# code = 2  【状态 / 事件通知（非 ASR 文本）】
+#   - 触发时机：
+#       WebSocket 结束并回传最后的ai总结
+#   - info:
+#       固定字符串："summary"
+#   data:
+#     - summary           : AI总结的summary 文本
+#
+# =========================================================
 class TranscriptionResponse(BaseModel):
-	code: int
-	info: str = ""
-	data: str = ""
+	code: int  # 消息类型 / 状态码
+	info: str = ""  # 元信息（JSON 字符串 / 标记字符串）
+	data: str = ""  # 实际载荷（文本 / JSON 字符串）
 
 
 app = FastAPI()
