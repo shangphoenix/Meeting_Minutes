@@ -3,40 +3,40 @@
 # WebSocket 实时转写 + 断开后离线说话人合并+ DeepSeek 总结
 # =========================================================
 # 功能概述：
-#  - 接收前端通过 WebSocket 发送的二进制 PCM16LE 音频流（16kHz 单声道），
+#  - 接收前端通过 WebSocket 发送的二进制 PCM16LE 音频流(16kHz 单声道)，
 #    实时做 VAD -> ASR 并将中间分段识别结果回传网页。
-#  - 在收到客户端「end」信号或结束后，保存完整 WAV，
+#  - 在收到客户端 "end" 信号或结束后，保存完整 WAV，
 #    离线执行 ASR/VAD/PUNC/说话人聚类，生成最终 JSON 并回传。
-#  - 离线完成后调用 DeepSeek（本地 Ollama 或云端 API）生成会议纪要 summary 并回传。
+#  - 离线完成后调用 DeepSeek(本地 Ollama 或云端 API)生成会议纪要 summary 并回传。
 #
-# 输入（WebSocket）：
+# 输入(WebSocket)：
 #  - 二进制：PCM16LE, 16kHz, mono
 #  - 文本：{"type":"end"} 或 纯字符串 "end" 表示录音结束
 #
-# 输出（WebSocket JSON message）：
-#  - code=0: 实时分段识别结果（data=text，info 包含时间戳/asr耗时等）
-#  - code=1: 断开后离线说话人合并输出（data=最终 JSON）
+# 输出(WebSocket JSON message)：
+#  - code=0: 实时分段识别结果(data=text，info 包含时间戳/asr耗时等)
+#  - code=1: 断开后离线说话人合并输出(data=最终 JSON)
 #  - code=2: DeepSeek 生成的 summary 文本
 #
-# 本地落盘（每次连接生成独立 session 目录）：
-#  - FULL_WAV_PATH   -> 完整会话 WAV（PCM16）
+# 本地落盘(每次连接生成独立 session 目录)：
+#  - FULL_WAV_PATH   -> 完整会话 WAV(PCM16)
 #  - OUTPUT_JSON     -> 离线合并后最终 segments JSON
-#  - DEBUG_RAW_JSON  -> 离线模型原始 sentence_info（调试用）
+#  - DEBUG_RAW_JSON  -> 离线模型原始 sentence_info(调试用)
 #
-# 关键配置与依赖（环境变量 / 常量）：
+# 关键配置与依赖(环境变量 / 常量)：
 #  - 采样率 RATE = 16000, CHANNELS = 1
-#  - 实时模型：RT_ASR_MODEL, RT_VAD_MODEL（使用 funasr.AutoModel）
+#  - 实时模型：RT_ASR_MODEL, RT_VAD_MODEL(使用 funasr.AutoModel)
 #  - 离线模型路径：通过 get_model_paths() 指向本地 modelscope 缓存
-#  - DeepSeek：USE_LOCAL_DEEPSEEK (Ollama 本地) 或 官方云端（DEEPSEEK_API_KEY / DEEPSEEK_BASE_URL）
+#  - DeepSeek：USE_LOCAL_DEEPSEEK (Ollama 本地) 或 官方云端(DEEPSEEK_API_KEY / DEEPSEEK_BASE_URL)
 #  - 需要依赖：python 包 numpy, ffmpeg-python, requests, funasr, fastapi, uvicorn 等；系统需安装 ffmpeg
 #
 # 运行方式：
-#  - 直接运行：python `app.py`，可选参数 --host/--port（默认 0.0.0.0:27000）
+#  - 直接运行：python `app.py`，可选参数 --host/--port(默认 0.0.0.0:27000)
 #
 # 注意事项：
 #  - 为避免每次连接重复加载，实时模型在模块级别全局加载。
 #  - 离线处理会在后台线程中执行以避免阻塞事件循环。
-#  - 该文件同时包含实时 WebSocket 服务与离线后处理逻辑（VAD/ASR/PUNC/spk + DeepSeek）。
+#  - 该文件同时包含实时 WebSocket 服务与离线后处理逻辑(VAD/ASR/PUNC/spk + DeepSeek)。
 # =========================================================
 
 from datetime import datetime
@@ -62,14 +62,14 @@ from starlette.status import HTTP_422_UNPROCESSABLE_ENTITY
 from pydantic import BaseModel
 import uvicorn
 
-# 加载本地环境变量（主要是DEEPSEEK_API_KEY）
+# 加载本地环境变量(主要是DEEPSEEK_API_KEY)
 from dotenv import load_dotenv
 
 load_dotenv()
 
 
 # =========================================================
-# 输出会话目录（按时间戳）
+# 输出会话目录(按时间戳)
 # =========================================================
 def make_output_session(base_dir="output"):
 	now = datetime.now()
@@ -87,7 +87,7 @@ def make_output_session(base_dir="output"):
 	return paths
 
 
-# 每次 WebSocket 连接（一次录音）都要重新生成 session 目录
+# 每次 WebSocket 连接(一次录音)都要重新生成 session 目录
 paths = None
 
 FULL_WAV_PATH = ""
@@ -95,7 +95,7 @@ OUTPUT_JSON = ""
 DEBUG_RAW_JSON = ""
 
 # =========================================================
-# 音频参数（网页侧必须匹配）
+# 音频参数(网页侧必须匹配)
 # =========================================================
 RATE = 16000
 CHANNELS = 1  # mono
@@ -114,13 +114,13 @@ ASR_DEVICE = "cuda:0"
 VAD_DEVICE = "cuda:0"
 
 # =========================================================
-# 离线输出合并规则（同 spk 且 gap <= MERGE_GAP_MS）
+# 离线输出合并规则(同 spk 且 gap <= MERGE_GAP_MS)
 # =========================================================
 MERGE_CONTINUOUS_SPK = True
 MERGE_GAP_MS = 300
 
 # =========================================================
-# DeepSeek 总结配置（支持 Ollama 本地 / 官方云端）
+# DeepSeek 总结配置(支持 Ollama 本地 / 官方云端)
 # =========================================================
 USE_LOCAL_DEEPSEEK = False  # True = Ollama 本地；False = 官方 DeepSeek API
 
@@ -214,7 +214,7 @@ def deepseek_summarize(raw_text: str) -> str:
 
 
 # =========================================================
-# 工具：确保目录、WAV 写入（PCM16）
+# 工具：确保目录、WAV 写入(PCM16)
 # =========================================================
 def ensure_dir_for_file(path: str):
 	d = os.path.dirname(path)
@@ -331,14 +331,14 @@ def offline_postprocess(full_wav_path: str) -> Dict[str, Any]:
 	model = load_offline_model(device="cuda", ngpu=1, ncpu=4)
 	rec = run_offline_asr(model, audio_bytes)
 	
-	# 原始 sentence_info（debug）
+	# 原始 sentence_info(debug)
 	debug_obj = {
 		"audio_full"   : {"path": FULL_WAV_PATH, "sample_rate": RATE, "channels": 1},
 		"sentence_info": rec.get("sentence_info", []),
 	}
 	save_json(debug_obj, DEBUG_RAW_JSON)
 	
-	# 合并后的 segments（最终输出）
+	# 合并后的 segments(最终输出)
 	units = build_output_units(
 		rec.get("sentence_info", []),
 		MERGE_CONTINUOUS_SPK,
@@ -357,7 +357,7 @@ def offline_postprocess(full_wav_path: str) -> Dict[str, Any]:
 
 def build_transcript_for_summary(result_obj: Dict[str, Any]) -> str:
 	"""
-	把离线 segments 拼成适合总结的全文（带 speaker/时间戳）
+	把离线 segments 拼成适合总结的全文(带 speaker/时间戳)
 	"""
 	segs = result_obj.get("segments") or []
 	lines = []
@@ -390,7 +390,7 @@ def build_transcript_for_summary(result_obj: Dict[str, Any]) -> str:
 #   - info:
 #       固定字符串："final"
 #   - data:
-#       final_obj 的 JSON 字符串（ensure_ascii=False）
+#       final_obj 的 JSON 字符串(ensure_ascii=False)
 #       结构示例：
 #       {
 #         "audio_full": {...},
@@ -405,7 +405,7 @@ def build_transcript_for_summary(result_obj: Dict[str, Any]) -> str:
 #       }
 #
 # -------------------------
-# code = 2  【状态 / 事件通知（非 ASR 文本）】
+# code = 2  【状态 / 事件通知(非 ASR 文本)】
 #   - 触发时机：
 #       WebSocket 结束并回传最后的ai总结
 #   - info:
@@ -416,8 +416,8 @@ def build_transcript_for_summary(result_obj: Dict[str, Any]) -> str:
 # =========================================================
 class TranscriptionResponse(BaseModel):
 	code: int  # 消息类型 / 状态码
-	info: str = ""  # 元信息（JSON 字符串 / 标记字符串）
-	data: str = ""  # 实际载荷（文本 / JSON 字符串）
+	info: str = ""  # 元信息(JSON 字符串 / 标记字符串)
+	data: str = ""  # 实际载荷(文本 / JSON 字符串)
 
 
 app = FastAPI()
@@ -453,7 +453,7 @@ async def health():
 
 
 # =========================================================
-# 全局加载实时模型（避免每个WS连接都加载一次）
+# 全局加载实时模型(避免每个WS连接都加载一次)
 # =========================================================
 rt_vad = AutoModel(
 	model=RT_VAD_MODEL,
@@ -475,7 +475,7 @@ rt_asr = AutoModel(
 # =========================================================
 # WebSocket: /ws/transcribe
 #  - 收到音频流：实时 VAD→ASR 回传
-#  - 断开时：保存 FULL_WAV_PATH，跑 offline_postprocess，再把最终 JSON + deepseek summary 回传（如果还能发）
+#  - 断开时：保存 FULL_WAV_PATH，跑 offline_postprocess，再把最终 JSON + deepseek summary 回传(如果还能发)
 # =========================================================
 @app.websocket("/ws/transcribe")
 async def ws_transcribe(websocket: WebSocket):
@@ -485,9 +485,9 @@ async def ws_transcribe(websocket: WebSocket):
 	  - sv=0/1 (目前流程A里先不影响逻辑，你后面要用再扩展)
 	Stream:
 	  - binary PCM16LE, 16kHz, mono
-	  - text/json: {"type":"end"} 或 "end" 表示录音结束（流程A关键）
+	  - text/json: {"type":"end"} 或 "end" 表示录音结束(流程A关键)
 	"""
-	# 每次连接都创建新的会话目录（一次录音一次目录）
+	# 每次连接都创建新的会话目录(一次录音一次目录)
 	local_paths = make_output_session("output")
 	local_full_wav = local_paths["wav"]
 	local_output_json = local_paths["json"]
@@ -508,7 +508,7 @@ async def ws_transcribe(websocket: WebSocket):
 	audio_buffer = np.array([], dtype=np.float32)
 	audio_vad = np.array([], dtype=np.float32)
 	
-	# 保存全量 int16（用于最终离线）
+	# 保存全量 int16(用于最终离线)
 	full_i16_chunks: List[np.ndarray] = []
 	
 	cache_vad: Dict[str, Any] = {}
@@ -628,7 +628,7 @@ async def ws_transcribe(websocket: WebSocket):
 				
 				continue
 			
-			# 2) 前端发送文本（结束信号）
+			# 2) 前端发送文本(结束信号)
 			if "text" in msg and msg["text"] is not None:
 				txt = (msg["text"] or "").strip()
 				if not txt:
@@ -670,7 +670,7 @@ async def ws_transcribe(websocket: WebSocket):
 		save_wav_pcm16(local_full_wav, full_i16, RATE)
 		print(f"✅ Full audio saved: {local_full_wav} (samples={len(full_i16)})")
 		
-		# 2) 离线 spk 输出（线程避免卡 event loop）
+		# 2) 离线 spk 输出(线程避免卡 event loop)
 		def _offline_postprocess_local(full_wav_path: str) -> Dict[str, Any]:
 			# 临时覆盖全局输出路径，让 offline_postprocess 落到本次 session 目录
 			global FULL_WAV_PATH, OUTPUT_JSON, DEBUG_RAW_JSON
@@ -720,7 +720,7 @@ async def ws_transcribe(websocket: WebSocket):
 			print(f"⚠️ send final failed (maybe client already closed): {e}")
 	
 	finally:
-		# 服务端主动关闭（前端也会在收到 code=1 后 close）
+		# 服务端主动关闭(前端也会在收到 code=1 后 close)
 		try:
 			await websocket.close()
 		except Exception:
