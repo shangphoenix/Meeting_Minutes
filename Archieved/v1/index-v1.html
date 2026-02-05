@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<title>会议纪要（网页版）</title>
+	
+	<style>
+        #transcriptionResult {
+            white-space: pre-wrap; /* Preserve whitespace and line breaks */
+            background-color: #f5f5f5;
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            padding: 10px 10px 10px 2em;
+            font-family: monospace;
+            font-size: 15px;
+
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        #summaryResult {
+            white-space: pre-wrap; /* Preserve whitespace and line breaks */
+            background-color: #e5f5e5;
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            padding: 10px 10px 10px 2em;
+            font-family: monospace;
+            font-size: 15px;
+
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        #recordButton.recording {
+            background-color: red;
+            color: white;
+        }
+	</style>
+	<script src="lib/jquery.js"></script>
+</head>
+<body>
+<div>
+	<button id="recordButton">开始录制</button>
+	<label>
+		语言选择:
+		<input id="lang" type="text" value="auto"/>
+	</label>
+	<label>
+		<input type="checkbox" id="speakerVerification"> 说话人拆分
+	</label>
+	<hr/>
+	下面是转录结果：
+	<p id="transcriptionResult"></p>
+	下面是AI总结：
+	<p id="summaryResult"></p>
+</div>
+</body>
+<script>
+
+    $('#transcriptionResult').text("Hello, World!\r\nThis is the default message.\r\n");
+
+
+    $(function () {
+
+        /* ========= 全局状态 ========= */
+        let ws = null;
+        let recorder = null;
+        let sendTimer = null;
+        let isRecording = false;
+
+        const $recordBtn = $('#recordButton');
+        const $result = $('#transcriptionResult');
+        const $summary = $('#summaryResult');
+
+        /* ========= 按钮点击 ========= */
+        $recordBtn.on('click', function () {
+            if (!isRecording) {
+                startRecording();
+            } else {
+                stopRecording();
+            }
+        });
+
+        /* ========= 开始录制 ========= */
+        function startRecording() {
+            const lang = $('#lang').val() || 'auto';
+            const sv = $('#speakerVerification').is(':checked') ? 1 : 0;
+
+            const wsUrl = `ws://localhost:27000/ws/transcribe?lang=${lang}&sv=${sv}`;
+            ws = new WebSocket(wsUrl);
+            ws.binaryType = 'arraybuffer';
+            $result.text('');
+            $summary.text('');
+            ws.onopen = function () {
+                console.log('WebSocket connected');
+
+                recorder.start();
+
+                // 每500ms发送一次音频数据
+                sendTimer = setInterval(function () {
+                    const blob = recorder.getBlob();
+                    if (blob && ws.readyState === WebSocket.OPEN) {
+                        ws.send(blob);
+                    }
+                    recorder.clear();
+                }, 500);
+            };
+
+            // 毫秒转时间戳
+            function msToTimestamp(ms, withHour = false) {
+                const totalSeconds = Math.floor(ms / 1000);
+                const milliseconds = ms % 1000;
+
+                const seconds = totalSeconds % 60;
+                const minutes = Math.floor(totalSeconds / 60) % 60;
+                const hours = Math.floor(totalSeconds / 3600);
+
+                if (withHour || hours > 0) {
+                    return (
+                        String(hours).padStart(2, "0") + ":" +
+                        String(minutes).padStart(2, "0") + ":" +
+                        String(seconds).padStart(2, "0") + "." +
+                        String(milliseconds).padStart(3, "0")
+                    );
+                } else {
+                    return (
+                        String(minutes).padStart(2, "0") + ":" +
+                        String(seconds).padStart(2, "0") + "." +
+                        String(milliseconds).padStart(3, "0")
+                    );
+                }
+            }
+
+
+            // 清理ASR文本中的标签
+            function cleanAsrText(text) {
+                return text.replace(/<\|[^]+?\|>/g, "").trim();
+            }
+
+            // 格式化字幕行
+            function formatSubtitle(info, rawText) {
+                const start = msToTimestamp(info.start_ms);
+                const end = msToTimestamp(info.end_ms);
+                const text = cleanAsrText(rawText);
+
+                return `[${start} - ${end}] ${text}`;
+            }
+
+
+            ws.onmessage = function (evt) {
+                try {
+                    const res = JSON.parse(evt.data);
+                    const info = JSON.parse(res.info);
+
+                    if (res.code === 0 && res.data) {
+                        appendText($result, formatSubtitle(info, res.data));
+                    }
+                    if (res.code === 2) {
+                        console.log("Summary:", res.summary);
+                        console.log("Final Transcription:", res.data);
+                    }
+
+                } catch (e) {
+                    appendText($result, evt.data);
+                }
+            };
+
+            ws.onclose = function () {
+                console.log('WebSocket closed');
+                stopRecording();
+            };
+
+            ws.onerror = function (err) {
+                console.error('WebSocket error', err);
+            };
+
+            $recordBtn
+                .addClass('recording')
+                .text('停止录制');
+
+            isRecording = true;
+        }
+
+        /* ========= 停止录制 ========= */
+        function stopRecording() {
+            if (sendTimer) {
+                clearInterval(sendTimer);
+                sendTimer = null;
+            }
+
+            if (recorder) {
+                recorder.stop();
+            }
+
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.close();
+            }
+
+            $recordBtn
+                .removeClass('recording')
+                .text('开始录制');
+
+            isRecording = false;
+
+        }
+
+        /* ========= 追加文本 ========= */
+        function appendText($el, text) {
+            const el = $el[0]; // 取 DOM 元素
+
+            // 是否接近底部（10px 容差）
+            const atBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < 10;
+
+            // 追加文本（保留换行）
+            $el.text($el.text() + text + "\n");
+
+            // 如果用户原本在底部，就自动滚到底
+            if (atBottom) {
+                el.scrollTop = el.scrollHeight; // 用原生最稳
+            }
+        }
+
+        /* ========= 替换文本 ========= */
+        function replaceText($el, text) {
+            const el = $el[0]; // 取 DOM 元素
+            // 替换文本（保留换行）
+            $el.text(text + "\n");
+        }
+
+        /* ========= 初始化录音 ========= */
+        navigator.getUserMedia = navigator.getUserMedia || navigator.mediaDevices.getUserMedia;
+
+        if (!navigator.getUserMedia) {
+            alert('浏览器不支持录音');
+            return;
+        }
+
+        navigator.getUserMedia(
+            {audio: true},
+            function (stream) {
+                recorder = new Recorder(stream);
+            },
+            function (err) {
+                console.error('获取麦克风失败', err);
+            }
+        );
+
+        /* ========= Recorder 定义 ========= */
+        function Recorder(stream) {
+            const context = new (window.AudioContext || window.webkitAudioContext)();
+            const input = context.createMediaStreamSource(stream);
+            const processor = context.createScriptProcessor(4096, 1, 1);
+
+            let buffer = [];
+            let size = 0;
+
+            processor.onaudioprocess = function (e) {
+                const data = e.inputBuffer.getChannelData(0);
+                const downsampled = downsample(data, context.sampleRate, 16000);
+                buffer.push(downsampled);
+                size += downsampled.length;
+            };
+
+            input.connect(processor);
+            processor.connect(context.destination);
+
+            this.start = function () {
+                buffer = [];
+                size = 0;
+            };
+
+            this.stop = function () {
+                processor.disconnect();
+                input.disconnect();
+            };
+
+            this.clear = function () {
+                buffer = [];
+                size = 0;
+            };
+
+            this.getBlob = function () {
+                if (!size) return null;
+
+                const pcm = new Int16Array(size);
+                let offset = 0;
+
+                buffer.forEach(chunk => {
+                    for (let i = 0; i < chunk.length; i++) {
+                        pcm[offset++] = Math.max(-1, Math.min(1, chunk[i])) * 0x7fff;
+                    }
+                });
+
+                return new Blob([pcm.buffer], {type: 'audio/pcm'});
+            };
+        }
+
+        /* ========= 重采样 ========= */
+        function downsample(buffer, inRate, outRate) {
+            if (outRate === inRate) return buffer;
+            const ratio = inRate / outRate;
+            const newLen = Math.round(buffer.length / ratio);
+            const result = new Float32Array(newLen);
+
+            let offset = 0;
+            for (let i = 0; i < newLen; i++) {
+                const start = Math.round(i * ratio);
+                const end = Math.round((i + 1) * ratio);
+                let sum = 0;
+                let count = 0;
+
+                for (let j = start; j < end && j < buffer.length; j++) {
+                    sum += buffer[j];
+                    count++;
+                }
+                result[offset++] = sum / count;
+            }
+            return result;
+        }
+
+    });
+</script>
+
+</html>

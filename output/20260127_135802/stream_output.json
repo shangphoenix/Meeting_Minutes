@@ -1,0 +1,15 @@
+{
+  "audio_full": {
+    "path": "output\\20260127_135802\\session_full.wav",
+    "sample_rate": 16000,
+    "channels": 1
+  },
+  "segments": [
+    {
+      "spk": 0,
+      "text": "呃，测试测试。",
+      "start_ms": 660,
+      "end_ms": 1795
+    }
+  ]
+}

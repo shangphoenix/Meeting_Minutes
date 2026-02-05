@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+	<meta charset="UTF-8"/>
+	<title>WS Test Client</title>
+	<style>
+        body {
+            font-family: sans-serif;
+        }
+
+        #log {
+            white-space: pre-wrap;
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 8px;
+        }
+
+        button {
+            margin-right: 8px;
+        }
+	</style>
+</head>
+<body>
+<h3>WebSocket 测试</h3>
+
+<div>
+	<button id="btnConnect">连接</button>
+	<button id="btnSendText">发一段文本（模拟ASR）</button>
+	<button id="btnSendBytes">发二进制（模拟音频）</button>
+	<button id="btnStop">Stop（触发最终summary）</button>
+	<button id="btnClose">直接关闭</button>
+	<button id="btnClear">清空</button>
+</div>
+
+<hr/>
+<div id="log"></div>
+
+<script>
+    let ws = null;
+    let counter = 1;
+
+    const logEl = document.getElementById("log");
+
+    function log(msg) {
+        logEl.textContent += msg + "\n";
+        logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    document.getElementById("btnConnect").onclick = () => {
+        if (ws && ws.readyState === WebSocket.OPEN) return;
+
+        // 如果服务端不是本机，改这里，例如 ws://192.168.10.90:9000/ws
+        ws = new WebSocket("ws://127.0.0.1:9000/ws");
+
+        ws.onopen = () => log("[client] connected");
+        ws.onclose = () => log("[client] closed");
+        ws.onerror = (e) => log("[client] error: " + e);
+
+        ws.onmessage = (evt) => {
+            log("[recv] " + evt.data);
+            try {
+                const obj = JSON.parse(evt.data);
+                if (obj.code === 3) {
+                    log("✅ 收到最终summary：\n" + obj.summary);
+                    log("✅ result.raw_text：\n" + (obj.result?.raw_text || ""));
+                }
+            } catch {
+            }
+        };
+    };
+
+    document.getElementById("btnSendText").onclick = () => {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return log("❌ 先连接");
+        const payload = {type: "text", text: `第${counter++}段文本（模拟ASR输出）`};
+        ws.send(JSON.stringify(payload));
+        log("[send] " + JSON.stringify(payload));
+    };
+
+    document.getElementById("btnSendBytes").onclick = () => {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return log("❌ 先连接");
+        // 随便发点 bytes，模拟音频 chunk
+        const bytes = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+        ws.send(bytes);
+        log("[send] <bytes> len=" + bytes.length);
+    };
+
+    document.getElementById("btnStop").onclick = () => {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return log("❌ 先连接");
+        const payload = {type: "stop"};
+        ws.send(JSON.stringify(payload));
+        log("[send] " + JSON.stringify(payload));
+    };
+
+    document.getElementById("btnClose").onclick = () => {
+        if (ws) ws.close();
+    };
+
+    document.getElementById("btnClear").onclick = () => {
+        logEl.textContent = "";
+    };
+</script>
+</body>
+</html>

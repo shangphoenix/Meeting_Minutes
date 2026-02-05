@@ -1,0 +1,45 @@
+{
+  "audio_full": {
+    "path": "output\\20260127_135802\\session_full.wav",
+    "sample_rate": 16000,
+    "channels": 1
+  },
+  "sentence_info": [
+    {
+      "text": "呃，",
+      "start": 660,
+      "end": 900,
+      "timestamp": [
+        [
+          660,
+          900
+        ]
+      ],
+      "spk": 0
+    },
+    {
+      "text": "测试测试。",
+      "start": 1020,
+      "end": 1795,
+      "timestamp": [
+        [
+          1020,
+          1180
+        ],
+        [
+          1180,
+          1360
+        ],
+        [
+          1360,
+          1500
+        ],
+        [
+          1500,
+          1795
+        ]
+      ],
+      "spk": 0
+    }
+  ]
+}
