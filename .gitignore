@@ -41,6 +41,7 @@ desktop.ini
 /Archieved/
 /test.html
 /video_processor/*.mp4
+/video_processor/*.wav
 /video_processor/output.json
 /video_processor/summary.txt
 
