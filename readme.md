@@ -26,7 +26,6 @@ Meeting_Minutes/
 ├── app.py                             # 主后端服务（FastAPI + WebSocket）
 ├── index.html                         # 主前端页面
 ├── requirements.txt                   # Python依赖包列表
-├── .env                               # 环境变量配置
 ├── .env-sample                        # 环境变量示例
 ├── .gitignore                         # Git忽略文件配置
 │
@@ -45,13 +44,12 @@ Meeting_Minutes/
 │       ├── stream_output.json         # 结构化会议纪要
 │       └── debug_segments_raw.json    # 原始识别片段（调试用）
 │
-├── video_processor/                   # 离线视频/音频处理模块
-│   ├── README.md                      # 模块说明文档
-│   ├── spk-deepseek.py                # 离线处理主脚本
-│   ├── output.json                    # 示例输出文件
-│   └── SVID_20260115_150848_1.mp4     # 示例视频文件
-│
-└── .venv/                             # Python虚拟环境（可选）
+└── video_processor/                   # 离线视频/音频处理模块
+    ├── README.md                      # 模块说明文档
+    ├── spk-deepseek.py                # 离线处理主脚本
+    ├── output.json                    # 示例输出文件
+    └── SVID_20260115_150848_1.mp4     # 示例视频文件
+
 ```
 
 ## 🛠️ 技术栈
@@ -84,26 +82,33 @@ Meeting_Minutes/
 ### 1. 环境准备
 ```bash
 # 克隆项目
-git clone <项目地址>
+git clone http://192.168.10.114:7190/ai/meeting_minutes
 cd Meeting_Minutes
 
-# 创建虚拟环境（可选但推荐）
-python -m venv .venv
+# 创建并激活 Conda 环境
+conda create -n meeting_minutes python=3.9 -y
+conda activate meeting_minutes
 
-# 激活虚拟环境
-# Windows:
-.venv\Scripts\activate
-# Linux/macOS:
-source .venv/bin/activate
+# 升级基础工具
+python -m pip install -U pip setuptools wheel
 
-# 安装依赖
+# 安装 PyTorch（CUDA 12.8，GPU 版本）
+pip3 install torch torchvision torchaudio \
+  --index-url https://download.pytorch.org/whl/cu128
+
+# 若使用国内镜像，可改为：
+# pip3 install torch torchvision torchaudio \
+#   --index-url https://mirrors.nju.edu.cn/pytorch/whl/cu128/
+
+# CPU 版本（无 GPU 时使用）：
+# pip3 install torch torchvision torchaudio
+
+# 安装项目最小依赖
 pip install -r requirements.txt
 
-# 安装PyTorch（根据CUDA版本选择）
-# CUDA 12.8:
-pip3 install torch torchvision torchaudio --index-url https://mirrors.nju.edu.cn/pytorch/whl/cu128/
-# CPU版本:
-pip3 install torch torchvision torchaudio
+# 验证 PyTorch 是否正确安装
+python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
+
 ```
 
 ### 2. 配置环境变量
