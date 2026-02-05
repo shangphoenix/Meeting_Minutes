@@ -485,7 +485,7 @@ async def ws_transcribe(websocket: WebSocket):
 	  - sv=0/1 (目前流程A里先不影响逻辑，你后面要用再扩展)
 	Stream:
 	  - binary PCM16LE, 16kHz, mono
-	  - text/json: {"type":"end"} 或 "end" 表示录音结束(流程A关键)
+	  - text/json: {"type":"end"} 或 "end" 表示录音结束
 	"""
 	# 每次连接都创建新的会话目录(一次录音一次目录)
 	local_paths = make_output_session("output")
@@ -520,7 +520,7 @@ async def ws_transcribe(websocket: WebSocket):
 	
 	ensure_dir_for_file(local_full_wav)
 	
-	# 流程A：通过“end”信号结束 while 循环，而不是靠断开
+	# 通过“end”信号结束 while 循环，而不是靠断开
 	ended_by_client = False
 	
 	try:
